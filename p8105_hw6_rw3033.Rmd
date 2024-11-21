@@ -1,0 +1,78 @@
+---
+title: "p8105_hw6_rw3033"
+output: github_document
+---
+# Question 1
+```{r}
+# Libraries
+library(dplyr)
+library(broom)
+library(purrr)
+library(ggplot2)
+```
+
+
+```{r}
+weather_df = 
+  rnoaa::meteo_pull_monitors(
+    c("USW00094728"),
+    var = c("PRCP", "TMIN", "TMAX"), 
+    date_min = "2017-01-01",
+    date_max = "2017-12-31") %>%
+  mutate(
+    name = recode(id, USW00094728 = "CentralPark_NY"),
+    tmin = tmin / 10,
+    tmax = tmax / 10) %>%
+  select(name, id, everything())
+```
+
+```{r}
+# Perform 5000 bootstrap samples and fit the linear model
+bootstrap_results = weather_df |>
+  modelr::bootstrap(n = 5000, id = "bootstrap_id") |>
+  mutate(
+    models = map(strap, ~ lm(tmax ~ tmin, data = .x)),
+    # R^2
+    r_squared = map_dbl(models, function(model) glance(model)[["r.squared"]]),
+    # log(beta0 * beta1)
+    log_beta_product = map_dbl(models, function(model) {
+      coefs <- tidy(model)[["estimate"]]
+      log(coefs[1] * coefs[2])
+    })
+  )
+
+# CI of the bootstrap results
+ci_results = bootstrap_results |>
+  summarise(
+    r_squared_lower = quantile(r_squared, 0.025),
+    r_squared_upper = quantile(r_squared, 0.975),
+    log_beta_product_lower = quantile(log_beta_product, 0.025),
+    log_beta_product_upper = quantile(log_beta_product, 0.975)
+  )
+```
+
+
+```{r}
+# Plot the distributions
+# R-squared distribution
+ggplot(bootstrap_results, aes(x = r_squared)) +
+  geom_histogram() +
+  labs(title = "Bootstrap Distribution of R-squared",
+       x = "R-squared",
+       y = "Frequency")
+
+# Log(beta0 * beta1) distribution
+ggplot(bootstrap_results, aes(x = log_beta_product)) +
+  geom_histogram() +
+  labs(title = "Bootstrap Distribution of log(beta0 * beta1)",
+       x = "log(beta0 * beta1)",
+       y = "Frequency")
+```
+Description:
+The bootstrap distribution of R^2 is slightly right-skewed, with most values concentrated between 0.89 and 0.92 and a peak near 0.91, indicating a strong and consistent model fit across samples. The distribution of log(beta0 * beta1) is symmetric and bell-shaped, centered around 2.00, suggesting stable relationships between the intercept and slope across resamples.
+
+
+# Problem 2
+
+
+
