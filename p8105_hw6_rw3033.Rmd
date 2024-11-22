@@ -2,16 +2,17 @@
 title: "p8105_hw6_rw3033"
 output: github_document
 ---
-# Question 1
-```{r}
 # Libraries
+```{r}
 library(dplyr)
 library(broom)
 library(purrr)
 library(ggplot2)
+library(tidyr)
 ```
 
 
+# Question 1
 ```{r}
 weather_df = 
   rnoaa::meteo_pull_monitors(
@@ -73,6 +74,89 @@ The bootstrap distribution of R^2 is slightly right-skewed, with most values con
 
 
 # Problem 2
+```{r}
+# Import data
+homicide_df = read.csv("~/Desktop/BIST8105/HW/p8105_hw6_rw3033/homicide-data.csv")
+
+# Data cleaning
+# Create the city_state variable
+clean_homicide_df = homicide_df |>
+  mutate(city_state = paste0(city, ", ", state))|>
+  mutate(
+    solved_homicides = ifelse(
+      disposition %in% c("Closed without arrest", "Open/No arrest"), 0, 1
+    )
+  ) |>
+  filter(!city_state %in% c("Dallas, TX", "Phoenix, AZ", "Kansas City, MO", "Tulsa, AL")) |>
+  filter(victim_race %in% c("White", "Black")) |>
+  mutate(victim_age = as.numeric(victim_age))
+```
+
+```{r}
+# Filter the dataset for Baltimore, MD
+baltimore_data = clean_homicide_df |>
+  filter(city_state == "Baltimore, MD")
+
+# Fit the logistic regression model
+baltimore_model = glm(
+  solved_homicides ~ victim_age + victim_sex + victim_race,
+  family = binomial(link = "logit"),
+  data = baltimore_data
+)
+
+# Summarize the model
+baltimore_model_summary = broom::tidy(
+  baltimore_model,
+  conf.int = TRUE,
+  exponentiate = TRUE
+)
+
+# The estimate and confidence interval of the adjusted odds ratio for solving homicides comparing male victims to female victims
+baltimore_model_summary |>
+  filter(term == "victim_sexMale") |>
+  select(term, estimate, conf.low, conf.high)
+```
 
 
+```{r}
+# Fit a glm for each city and extract ORs and CIs
+city_or_ci = clean_homicide_df |>
+  group_by(city_state) |>
+  nest() |>
+  mutate(
+    model = purrr::map(data, ~ glm(
+      solved_homicides ~ victim_age + victim_sex + victim_race,
+      family = binomial(link = "logit"),
+      data = .x
+    )),
+    tidy_model = purrr::map(model, ~ broom::tidy(.x, conf.int = TRUE, exponentiate = TRUE))
+  ) |>
+  unnest(tidy_model) |>
+  filter(term == "victim_sexMale") |>
+  select(city_state, estimate, conf.low, conf.high)
+```
+
+```{r}
+# Plot the results
+city_or_ci_plot = city_or_ci |>
+  mutate(city_state = reorder(city_state, estimate)) |>
+  ggplot(aes(x = estimate, y = city_state)) +
+  geom_point() +
+  geom_errorbarh(aes(xmin = conf.low, xmax = conf.high)) +
+  labs(
+    title = "Adjusted Odds Ratios for Solving Homicides by City",
+    x = "Adjusted Odds Ratio (Male vs Female Victims)",
+    y = "City",
+    caption = "Error bars represent 95% confidence intervals"
+  ) +
+  theme_minimal(base_size = 8)
+
+print(city_or_ci_plot)
+```
+
+
+# Problem 3
+```{r}
+
+```
 
