@@ -9,6 +9,7 @@ library(broom)
 library(purrr)
 library(ggplot2)
 library(tidyr)
+library(modelr)
 ```
 
 
@@ -153,10 +154,87 @@ city_or_ci_plot = city_or_ci |>
 
 print(city_or_ci_plot)
 ```
+Comment:
 
 
 # Problem 3
-```{r}
 
+```{r}
+# Import data
+birthweight_df = read.csv("~/Desktop/BIST8105/HW/p8105_hw6_rw3033/birthweight.csv", na = c("NA", ".", "", "null", "-"))
+
+
+# Data cleaning
+birthweight_df = birthweight_df |>
+  mutate(
+    fincome = as.numeric(fincome), 
+    wtgain = as.numeric(wtgain), 
+    gaweeks = as.numeric(gaweeks) 
+  )|>
+  drop_na()
 ```
 
+
+```{r}
+# Fit the regression model
+model_1 = lm(
+  bwt ~ gaweeks + babysex + mheight + wtgain + smoken,
+  data = birthweight_df
+)
+
+# Add predictions and residuals to the dataset
+birthweight_predictions = birthweight_df |>
+  add_predictions(model_1) |>
+  add_residuals(model_1)
+```
+Comment:
+My model is bwt=β0+β1(gaweeks)+β2(babysex)+β3(mheight)+β4(wtgain)+β5(smoke)+ϵ.
+This model is based on a hypothesized structure for the factors that underly birthweight.
+
+```{r}
+# Plot residuals vs fitted values
+residuals_plot = ggplot(birthweight_predictions, aes(x = pred, y = resid)) +
+  geom_point() + 
+  labs(
+    title = "Residuals vs Fitted Values",
+    x = "Fitted Values (Predicted Birthweight)",
+    y = "Residuals"
+  ) +
+  theme_minimal()
+
+print(residuals_plot)
+```
+
+```{r}
+# Plot RMSE distributions
+cv_results <- cv_folds |> 
+  mutate(
+    model_1 = map(train, ~ lm(bwt ~ gaweeks + babysex + mheight + wtgain + smoken, data = .x)),
+    model_2 = map(train, ~ lm(bwt ~ blength + gaweeks, data = .x)),
+    model_3 = map(train, ~ lm(bwt ~ bhead + blength + babysex + bhead * blength + bhead * babysex + blength * babysex + bhead * blength * babysex, data = .x)),
+    model_1_rmse = map2_dbl(model_1, test, ~ rmse(.x, .y)),
+    model_2_rmse = map2_dbl(model_2, test, ~ rmse(.x, .y)),
+    model_3_rmse = map2_dbl(model_3, test, ~ rmse(.x, .y))
+  ) |> 
+  select(model_1_rmse, model_2_rmse, model_3_rmse) |> 
+  pivot_longer(
+    cols = everything(),
+    names_to = "model",
+    values_to = "rmse"
+  )
+```
+
+```{r}
+# Plot
+cv_results |> 
+  ggplot(aes(x = model, y = rmse)) +
+  geom_boxplot() +
+  labs(
+    title = "Cross-Validated RMSE for Birthweight Models",
+    x = "Model",
+    y = "RMSE"
+  ) +
+  theme_minimal()
+```
+Comment:
+The boxplot shows the cross-validated RMSE (root mean squared error) for three models predicting birthweight. Model 1 (Proposed Model) has the highest RMSE (~450) with relatively narrow variability, indicating poorer predictive accuracy but consistent performance across cross-validation splits. Model 2 (Main Effects) achieves lower RMSE (~400) with slightly more variability, suggesting improved predictive accuracy from the inclusion of gestational age and birth length. Model 3 (Interaction Model) has the lowest RMSE (~300) and greater variability, reflecting superior predictive performance but potential sensitivity to data splits due to its complexity. Overall, Model 3 provides the best predictions, but its added complexity should be carefully considered.
